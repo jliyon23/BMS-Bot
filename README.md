@@ -220,15 +220,106 @@ The test suite covers the diff engine, seat thresholds, formatting/escaping,
 parsers, proxy normalisation/encryption, rotating failure policy, runtime flags,
 config path resolution and alert fan-out deduplication.
 
-## Oracle deployment notes
+## Oracle Cloud Always Free setup
 
-- Use a multi-arch image; `curl_cffi` needs a wheel for the instance architecture.
-- Keep the SQLite file on a Block Volume and back it up with `sqlite3 .backup`.
-- Expose only the reverse proxy (443). The bot uses long polling, so no inbound
-  port is required unless you switch to Telegram webhooks.
-- Put the admin behind HTTPS + an IP allowlist or Tailscale.
-- Set `BMS_ENV=prod` and leave `BMS_ALLOW_DIRECT=false`.
-- Run `alembic upgrade head` as a one-shot job before starting workers.
+Recommended shape:
+
+- **Region:** Mumbai or Hyderabad (home region cannot be changed later).
+- **Shape:** `VM.Standard.A1.Flex` — **2 OCPU / 12 GB RAM** (fits the 4 OCPU / 24 GB free allowance).
+  If A1 capacity is unavailable, retry another availability domain or use
+  `VM.Standard.E2.1.Micro` (1 GB RAM, add 2 GB swap).
+- **Boot volume:** 50–100 GB (Always Free includes 200 GB block storage).
+- **OS:** Ubuntu 24.04 LTS (aarch64).
+- **Ingress:** SSH 22 from your IP only. Do **not** expose 8080.
+- **Egress:** all (needed for BMS, Telegram, proxy).
+
+ARM64 wheels exist for `curl_cffi`, `greenlet`, `cryptography` and
+`argon2-cffi-bindings`, so the A1 shape works with the Docker image.
+
+### Install
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo timedatectl set-timezone Asia/Kolkata
+sudo apt install -y git sqlite3
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker "$USER"
+newgrp docker
+
+git clone git@github.com:jliyon23/BMS-Bot.git
+cd BMS-Bot
+cp .env.example .env
+chmod 600 .env
+```
+
+Set at least:
+
+```env
+BMS_ENV=prod
+BMS_ADMIN_SECRET_KEY=<strong random>
+BMS_TELEGRAM_BOT_TOKEN=<token>
+BMS_PROXY_ENCRYPTION_KEY=<fernet key>
+BMS_UID=1000
+BMS_GID=1000
+BMS_PROXY_FREE_ENABLED=false
+BMS_ALLOW_DIRECT=false
+```
+
+Then:
+
+```bash
+docker compose up -d --build
+docker compose ps
+docker compose exec admin bmsbot doctor
+```
+
+### Admin access
+
+The admin port is bound to `127.0.0.1` on the host. Use an SSH tunnel:
+
+```bash
+ssh -i ~/.ssh/oracle_key -L 8080:127.0.0.1:8080 ubuntu@<public-ip>
+```
+
+Then open <http://127.0.0.1:8080>. Alternatively use Tailscale or Caddy with
+HTTPS + IP allowlist; do not open 8080 in the Oracle security list.
+
+### Firewall
+
+Oracle Ubuntu images may ship with restrictive iptables. Ensure SSH stays open:
+
+```bash
+sudo ufw allow 22/tcp
+sudo ufw enable
+```
+
+No other inbound port is required. The bot uses long polling.
+
+### Backups
+
+SQLite runs in WAL mode; use the online backup command:
+
+```bash
+mkdir -p ~/bms-backups
+sqlite3 ~/BMS-Bot/data/bmsbot.db \
+  ".backup '$HOME/bms-backups/bmsbot-$(date +%F-%H%M).db'"
+find ~/bms-backups -name 'bmsbot-*.db' -mtime +7 -delete
+```
+
+Add that to cron daily. Optionally copy backups to Oracle Object Storage.
+
+### Operations
+
+```bash
+docker compose logs -f proxy monitor admin
+docker compose exec admin bmsbot status
+docker compose exec admin bmsbot reconcile
+docker compose pull && docker compose up -d --build
+```
+
+Set `BMS_ENV=prod` and `BMS_ALLOW_DIRECT=false`. Direct mode is then blocked;
+the scraper stays proxy-only. Keep 10s polling for hot monitors only — one
+showtimes monitor can use 0.5–5 GB/day.
 
 ## Known limitations
 
