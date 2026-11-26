@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Monitors{% endblock %}
+{% block content %}
+<h1>Shared monitors</h1>
+<p class="muted">One monitor serves every user watching the same region + movie + date.</p>
+<table>
+  <tr>
+    <th>ID</th><th>Movie</th><th>Region</th><th>Date</th><th>Kind</th>
+    <th>Active</th><th>Next run</th><th>Lag ms</th><th>Failures</th><th>Last error</th><th>Actions</th>
+  </tr>
+  {% for monitor, movie, region in rows %}
+  <tr>
+    <td>{{ monitor.id }}</td>
+    <td>{{ movie.title if movie else monitor.event_code }}</td>
+    <td>{{ region.name if region else monitor.region_code }}</td>
+    <td>{{ monitor.date_code }}</td>
+    <td>{{ monitor.kind }}{% if monitor.venue_code %} · {{ monitor.venue_code }}{% endif %}</td>
+    <td>{{ "yes" if monitor.is_active else "no" }}</td>
+    <td>{{ monitor.next_run_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+    <td>{{ monitor.lag_ms }}</td>
+    <td>{{ monitor.consecutive_failures }}</td>
+    <td class="err">{{ (monitor.last_error or "")[:80] }}</td>
+    <td class="actions">
+      <form method="post" action="/monitors/{{ monitor.id }}/toggle">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit">{{ "Pause" if monitor.is_active else "Resume" }}</button>
+      </form>
+      <form method="post" action="/monitors/{{ monitor.id }}/run">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit">Run now</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="11">No monitors yet.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

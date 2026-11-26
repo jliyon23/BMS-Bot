@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Proxies{% endblock %}
+{% block content %}
+<h1>Proxies</h1>
+
+{% if not use_proxy %}
+<div class="flash warn">
+  <b>PROXY DISABLED.</b> Scrapers are sending direct requests. This is for
+  testing only{% if not direct_allowed %} (direct is blocked in production){% endif %}.
+</div>
+{% elif premium %}
+<div class="flash warn">Premium mode is ON. Free proxies are ignored by the scraper.</div>
+{% else %}
+<div class="flash">Free proxy mode. Add a premium proxy below to switch automatically.</div>
+{% endif %}
+
+<form method="post" action="/proxies/toggle-proxy" class="inline">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button type="submit">{{ "Disable proxy (direct mode)" if use_proxy else "Enable proxy mode" }}</button>
+</form>
+
+<h2>Add proxy</h2>
+<form method="post" action="/proxies/add" class="grid-form">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Proxy URL
+    <input type="text" name="url" placeholder="http://host:port or http://user:pass@host:port" required>
+  </label>
+  <label>Tier
+    <select name="tier">
+      <option value="premium">Premium</option>
+      <option value="free">Free / manual</option>
+    </select>
+  </label>
+  <label>Label
+    <input type="text" name="label" placeholder="provider name">
+  </label>
+  <label class="check">
+    <input type="checkbox" name="is_rotating">
+    Rotating
+  </label>
+  <button type="submit">Add and validate</button>
+</form>
+<p class="muted">
+  Mark a rotating proxy (e.g. Webshare <code>-rotate</code>) so it is accepted
+  at a lower success rate and retried per request. Authenticated proxies are
+  encrypted at rest. Encryption key configured: <b>{{ "yes" if cipher else "NO" }}</b>.
+</p>
+
+<h2>Pool</h2>
+<table>
+  <tr>
+    <th>ID</th><th>Tier</th><th>URL</th><th>Rotating</th><th>Status</th><th>p95 ms</th>
+    <th>Success</th><th>Fails</th><th>Exit IP</th><th>Source</th><th>Last check</th><th>Actions</th>
+  </tr>
+  {% for proxy in proxies %}
+  <tr>
+    <td>{{ proxy.id }}</td>
+    <td><span class="pill">{{ proxy.tier }}</span></td>
+    <td><code>{{ proxy.url }}</code>{% if proxy.credentials_encrypted %} 🔒{% endif %}</td>
+    <td>{{ "yes" if proxy.is_rotating else "no" }}</td>
+    <td>{{ proxy.status }}</td>
+    <td>{{ proxy.p95_ms }}</td>
+    <td>{{ "%.0f"|format(proxy.success_rate * 100) }}%</td>
+    <td>{{ proxy.consecutive_failures }}</td>
+    <td>{{ proxy.exit_ip or "—" }}</td>
+    <td>{{ proxy.source }}</td>
+    <td>{{ proxy.last_checked_at.strftime("%Y-%m-%d %H:%M") if proxy.last_checked_at else "—" }}</td>
+    <td class="actions">
+      <form method="post" action="/proxies/{{ proxy.id }}/recheck">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit">Recheck</button>
+      </form>
+      <form method="post" action="/proxies/{{ proxy.id }}/toggle">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit">{{ "Disable" if proxy.is_enabled else "Enable" }}</button>
+      </form>
+      <form method="post" action="/proxies/{{ proxy.id }}/delete" onsubmit="return confirm('Delete this proxy?');">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="danger">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="12">No proxies yet. Start the proxy worker or add a premium proxy.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

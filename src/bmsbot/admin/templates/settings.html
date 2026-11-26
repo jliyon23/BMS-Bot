@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+<table class="stats">
+  <tr><th>Poll interval</th><td>{{ settings.poll_interval_sec }} s</td></tr>
+  <tr><th>Seat poll interval</th><td>{{ settings.seat_poll_interval_sec }} s</td></tr>
+  <tr><th>Max seat checks / scan</th><td>{{ settings.max_seat_checks_per_scan }}</td></tr>
+  <tr><th>Seat alert threshold</th><td>{{ settings.seat_alert_threshold }} seats</td></tr>
+  <tr><th>Proxy country</th><td>{{ settings.proxy_country }}</td></tr>
+  <tr><th>Validation iterations</th><td>{{ settings.proxy_validation_iterations }}</td></tr>
+  <tr><th>Environment</th><td>{{ settings.env }}</td></tr>
+  <tr><th>Database</th><td><code>{{ settings.database_url }}</code></td></tr>
+</table>
+<p class="muted">
+  Polling intervals and proxy sources come from the environment. Seat thresholds
+  can be tuned below without a restart.
+</p>
+
+<h2>Proxy mode</h2>
+<form method="post" action="/settings" class="grid-form">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="use_proxy_present" value="1">
+  <label class="check">
+    <input type="checkbox" name="use_proxy" {% if use_proxy %}checked{% endif %}>
+    Use proxy for BookMyShow requests
+  </label>
+  <button type="submit">Save</button>
+</form>
+{% if not use_proxy %}
+<div class="flash warn">
+  <b>PROXY DISABLED.</b> Requests go directly to BookMyShow. Use only for testing.
+</div>
+{% endif %}
+{% if not direct_allowed %}
+<p class="muted">
+  Direct mode is blocked in production. Set <code>BMS_ALLOW_DIRECT=true</code>
+  only if you understand the risk.
+</p>
+{% endif %}
+
+<h2>Runtime overrides</h2>
+<form method="post" action="/settings" class="grid-form">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Seat alert threshold
+    <input type="number" name="seat_alert_threshold" min="1" max="200" value="{{ overrides.get('seat_alert_threshold', settings.seat_alert_threshold) }}">
+  </label>
+  <label>Max seat checks per scan
+    <input type="number" name="max_seat_checks_per_scan" min="0" max="100" value="{{ overrides.get('max_seat_checks_per_scan', settings.max_seat_checks_per_scan) }}">
+  </label>
+  <button type="submit">Save</button>
+</form>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block content %}
+<h1>Users</h1>
+<form method="get" action="/users" class="inline">
+  <input type="text" name="q" value="{{ q }}" placeholder="Search username, name or Telegram ID">
+  <button type="submit">Search</button>
+</form>
+<p class="muted">{{ total }} users · page {{ page }} of {{ pages }}</p>
+<table>
+  <tr>
+    <th>ID</th><th>Telegram ID</th><th>Username</th><th>First name</th>
+    <th>Region</th><th>PIN</th><th>State</th><th>Last seen</th><th>Actions</th>
+  </tr>
+  {% for user in users %}
+  <tr>
+    <td>{{ user.id }}</td>
+    <td>{{ user.telegram_id }}</td>
+    <td>{{ user.username or "—" }}</td>
+    <td>{{ user.first_name or "—" }}</td>
+    <td>{{ user.region_code or "—" }}</td>
+    <td>{{ user.pin_code or "—" }}</td>
+    <td>
+      {% if user.is_banned %}<span class="bad">banned</span>
+      {% elif user.is_active %}<span class="ok">active</span>
+      {% else %}<span class="warn">inactive</span>{% endif %}
+    </td>
+    <td>{{ user.last_seen_at.strftime("%Y-%m-%d %H:%M") if user.last_seen_at else "—" }}</td>
+    <td class="actions">
+      <form method="post" action="/users/{{ user.id }}/ban">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit">{{ "Unban" if user.is_banned else "Ban" }}</button>
+      </form>
+      <form method="post" action="/users/{{ user.id }}/delete" onsubmit="return confirm('Delete this user and all watches?');">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="danger">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="9">No users.</td></tr>
+  {% endfor %}
+</table>
+<nav class="pager">
+  {% if page > 1 %}<a href="/users?page={{ page - 1 }}&q={{ q }}">← Previous</a>{% endif %}
+  {% if page < pages %}<a href="/users?page={{ page + 1 }}&q={{ q }}">Next →</a>{% endif %}
+</nav>
+{% endblock %}

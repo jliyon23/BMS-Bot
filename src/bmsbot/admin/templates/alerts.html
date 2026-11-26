@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Alerts{% endblock %}
+{% block content %}
+<h1>Alert log</h1>
+<form method="get" action="/alerts" class="inline">
+  <select name="status">
+    <option value="">All statuses</option>
+    <option value="pending" {{ "selected" if status == "pending" else "" }}>Pending</option>
+    <option value="sent" {{ "selected" if status == "sent" else "" }}>Sent</option>
+    <option value="failed" {{ "selected" if status == "failed" else "" }}>Failed</option>
+  </select>
+  <button type="submit">Filter</button>
+</form>
+<table>
+  <tr><th>ID</th><th>User</th><th>Type</th><th>Status</th><th>Created</th><th>Error</th><th>Payload</th><th>Actions</th></tr>
+  {% for alert in alerts %}
+  <tr>
+    <td>{{ alert.id }}</td>
+    <td>{{ alert.user_id }}</td>
+    <td>{{ alert.alert_type }}</td>
+    <td>{{ alert.status }}</td>
+    <td>{{ alert.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+    <td class="err">{{ (alert.last_error or "")[:60] }}</td>
+    <td><code>{{ alert.payload }}</code></td>
+    <td>
+      <form method="post" action="/alerts/{{ alert.id }}/resend">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit">Resend</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="8">No alerts.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

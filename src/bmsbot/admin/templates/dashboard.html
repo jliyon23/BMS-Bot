@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<table class="stats">
+  <tr><th>Users</th><td>{{ users }}</td><th>Active watches</th><td>{{ watches }}</td></tr>
+  <tr><th>Active monitors</th><td>{{ monitors }}</td><th>Due now</th><td>{{ due }}</td></tr>
+  <tr><th>Pending alerts</th><td>{{ pending }}</td><th>Sent (24h)</th><td>{{ sent }}</td></tr>
+  <tr><th>Proxy mode</th><td colspan="3">{{ "PREMIUM ONLY (free proxies ignored)" if premium else "FREE" }}</td></tr>
+</table>
+
+<h2>Proxy pool</h2>
+<table>
+  <tr><th>Status</th><th>Count</th></tr>
+  {% for status, count in proxy_counts.items() %}
+  <tr><td>{{ status }}</td><td>{{ count }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Worker heartbeats</h2>
+<table>
+  <tr><th>Worker</th><th>Status</th><th>Last seen</th><th>Detail</th></tr>
+  {% for hb in heartbeats %}
+  <tr>
+    <td>{{ hb.name }}</td>
+    <td>{{ hb.status }}</td>
+    <td>{{ hb.last_seen_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+    <td><code>{{ hb.detail }}</code></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="4">No heartbeats yet.</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Recent alerts</h2>
+<table>
+  <tr><th>ID</th><th>User</th><th>Type</th><th>Status</th><th>Created</th></tr>
+  {% for alert in recent_alerts %}
+  <tr>
+    <td>{{ alert.id }}</td>
+    <td>{{ alert.user_id }}</td>
+    <td>{{ alert.alert_type }}</td>
+    <td>{{ alert.status }}</td>
+    <td>{{ alert.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5">No alerts yet.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}
