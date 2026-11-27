@@ -592,7 +592,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await session.execute(
             update(AlertEvent)
             .where(AlertEvent.id == alert_id)
-            .values(status="pending", attempts=0, last_error=None)
+            .values(status="pending", attempts=0, last_error=None, next_attempt_at=None)
         )
         await _audit(session, request, admin, "alert_resend", "alert", str(alert_id))
         await session.commit()
