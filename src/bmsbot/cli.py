@@ -5,7 +5,7 @@ import asyncio
 import getpass
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
@@ -13,6 +13,7 @@ from bmsbot.admin.auth import hash_password
 from bmsbot.bms.client import BmsClient, BmsError, NoProxyAvailable
 from bmsbot.bms.http import AsyncRateLimiter
 from bmsbot.config import get_settings
+from bmsbot.db.base import utcnow
 from bmsbot.db.models import AdminUser, Monitor, Region
 from bmsbot.db.repositories.alerts import AlertRepository
 from bmsbot.db.repositories.monitors import MonitorRepository
@@ -249,14 +250,19 @@ async def cmd_doctor(_args: argparse.Namespace) -> int:
             watches = await WatchRepository(session).count_active()
             monitors = await MonitorRepository(session).count_active()
             pending = await AlertRepository(session).count_pending()
+            failed = await AlertRepository(session).count_failed_since(
+                utcnow() - timedelta(days=1)
+            )
+            last_sent = await AlertRepository(session).last_sent_at()
             proxies = await ProxyRepository(session).counts()
             premium = await ProxyRepository(session).has_enabled_premium()
             use_proxy = bool(await SettingsRepository(session).get("use_proxy", True))
-            heartbeats = (await session.execute(text("select name, status, last_seen_at from worker_heartbeats"))).all()
+            heartbeats = (await session.execute(text("select name, status, last_seen_at, detail from worker_heartbeats"))).all()
     except Exception as exc:
         print(f"database check FAILED: {type(exc).__name__}: {exc}")
         return 1
 
+    print(f"telegram     : {'configured' if settings.telegram_bot_token else 'MISSING TOKEN'}")
     print(f"alembic      : {revision}")
     print(f"tables       : {tables}")
     print(f"admins       : {list(admins)}")
@@ -264,12 +270,29 @@ async def cmd_doctor(_args: argparse.Namespace) -> int:
     print(f"watches      : {watches}")
     print(f"monitors     : {monitors}")
     print(f"alerts_pending: {pending}")
+    print(f"alerts_failed_24h: {failed}")
+    print(f"alerts_last_sent : {last_sent}")
     print(f"use_proxy    : {use_proxy}")
     print(f"premium_only : {premium}")
     print(f"proxies      : {proxies}")
     print("heartbeats   :")
     for row in heartbeats:
-        print(f"  {row[0]:<16} {row[1]:<6} {row[2]}")
+        detail = row[3] or {}
+        extra = ""
+        if row[0] == "alert-sender":
+            extra = (
+                f" sent={detail.get('sent')} failed={detail.get('failed')}"
+                f" pending={detail.get('pending')}"
+                f" configured={detail.get('configured')}"
+            )
+            if detail.get("last_error"):
+                extra += f" last_error={detail['last_error']}"
+        print(f"  {row[0]:<16} {row[1]:<8} {row[2]}{extra}")
+    if not settings.telegram_bot_token:
+        print("WARNING: telegram token missing; alerts cannot be delivered")
+        return 1
+    if failed:
+        print(f"WARNING: {failed} alert(s) failed to send in the last 24h")
     return 0
 
 

@@ -238,6 +238,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         alerts = AlertRepository(session)
         pending = await alerts.count_pending()
         sent = await alerts.count_sent_since(utcnow() - timedelta(hours=24))
+        failed_24h = await alerts.count_failed_since(utcnow() - timedelta(hours=24))
+        last_sent = await alerts.last_sent_at()
+        settings_obj = get_settings()
         proxy_counts = await ProxyRepository(session).counts()
         premium = await ProxyRepository(session).has_enabled_premium()
         heartbeats = list(
@@ -256,6 +259,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 due=due,
                 pending=pending,
                 sent=sent,
+                failed_24h=failed_24h,
+                last_sent=last_sent,
+                telegram_configured=bool(settings_obj.telegram_bot_token),
                 proxy_counts=proxy_counts,
                 premium=premium,
                 heartbeats=heartbeats,

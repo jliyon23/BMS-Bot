@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,9 +43,13 @@ class AlertRepository:
         return bool(result.rowcount)
 
     async def pending(self, limit: int = 100) -> list[AlertEvent]:
+        now = utcnow()
         result = await self.session.execute(
             select(AlertEvent)
-            .where(AlertEvent.status == AlertStatus.PENDING.value)
+            .where(
+                AlertEvent.status == AlertStatus.PENDING.value,
+                or_(AlertEvent.next_attempt_at.is_(None), AlertEvent.next_attempt_at <= now),
+            )
             .order_by(AlertEvent.created_at)
             .limit(limit)
         )
@@ -79,12 +83,25 @@ class AlertRepository:
         return list(result.scalars())
 
     async def count_pending(self) -> int:
-        from sqlalchemy import func
-
         result = await self.session.execute(
             select(func.count(AlertEvent.id)).where(AlertEvent.status == AlertStatus.PENDING.value)
         )
         return int(result.scalar_one())
+
+    async def count_failed_since(self, since: datetime) -> int:
+        result = await self.session.execute(
+            select(func.count(AlertEvent.id)).where(
+                AlertEvent.status == AlertStatus.FAILED.value,
+                AlertEvent.created_at >= since,
+            )
+        )
+        return int(result.scalar_one())
+
+    async def last_sent_at(self) -> datetime | None:
+        result = await self.session.execute(
+            select(func.max(AlertEvent.sent_at)).where(AlertEvent.sent_at.is_not(None))
+        )
+        return result.scalar_one_or_none()
 
     async def count_sent_since(self, since: datetime) -> int:
         from sqlalchemy import func

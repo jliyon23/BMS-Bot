@@ -75,6 +75,10 @@ class Settings(BaseSettings):
     seat_alert_threshold: int = 5
     seat_alert_cooldown_sec: int = 60
 
+    # Alert delivery retry policy
+    alert_max_attempts: int = 4
+    alert_retry_ttl_sec: float = 300.0
+
     # Worker identity
     worker_id: str = "worker"
 

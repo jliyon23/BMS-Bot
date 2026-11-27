@@ -15,6 +15,7 @@ from bmsbot.bms.client import BmsClient, BmsError, NoProxyAvailable, RegionRef
 from bmsbot.bms.parsers import ShowtimesSnapshot
 from bmsbot.bot import keyboards, texts
 from bmsbot.bot.states import Onboarding
+from bmsbot.bot.ui import safe_edit
 from bmsbot.db.base import utcnow
 from bmsbot.db.models import Movie, Region, User, Watch
 from bmsbot.db.repositories.monitors import MonitorRepository
@@ -154,7 +155,7 @@ async def choose_region(
     await state.set_state(Onboarding.choosing_movie)
 
     if callback.message is not None:
-        await callback.message.edit_text(f"📍 {region.name}")
+        await safe_edit(callback.message, f"📍 {region.name}")
         await send_movie_page(callback.message, session, client, region, page=0)
 
 
@@ -181,12 +182,13 @@ async def page_movies(
     if callback.message is not None:
         if movies:
             total_pages = max(1, math.ceil(total / PAGE_SIZE))
-            await callback.message.edit_text(
+            await safe_edit(
+                callback.message,
                 texts.CHOOSE_MOVIE.format(region=region.name),
-                reply_markup=keyboards.movies_keyboard(movies, page, total_pages),
+                keyboards.movies_keyboard(movies, page, total_pages),
             )
         else:
-            await callback.message.edit_text(texts.NO_MOVIES.format(region=region.name))
+            await safe_edit(callback.message, texts.NO_MOVIES.format(region=region.name))
 
 
 @router.callback_query(F.data.startswith("movie:"))
@@ -254,11 +256,12 @@ async def save_subscription(
     # _ensure_monitors commits its own inserts. Clear FSM only after that
     # commit, otherwise the FSM write contends with the open transaction.
     if callback.message is not None:
-        await callback.message.edit_text(
+        await safe_edit(
+            callback.message,
             texts.SUBSCRIBED.format(
                 movie=data.get("title") or event_code,
                 region=region.name,
-            )
+            ),
         )
     try:
         await state.clear()

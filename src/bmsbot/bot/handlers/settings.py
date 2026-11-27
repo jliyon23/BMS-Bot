@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bmsbot.bms.client import BmsClient, BmsError, NoProxyAvailable
 from bmsbot.bot import texts
 from bmsbot.bot.handlers.onboarding import send_movie_page
+from bmsbot.bot.ui import safe_edit
 from bmsbot.db.models import Region, User
 from bmsbot.db.repositories.regions import RegionRepository
 from bmsbot.db.repositories.users import UserRepository
@@ -111,12 +112,12 @@ async def confirm_delete(
 
     await MonitorRepository(session).deactivate_orphans()
     if callback.message is not None:
-        await callback.message.edit_text(texts.DELETED)
+        await safe_edit(callback.message, texts.DELETED)
     await callback.answer("Deleted")
 
 
 @router.callback_query(F.data == "delete:cancel")
 async def cancel_delete(callback: CallbackQuery) -> None:
     if callback.message is not None:
-        await callback.message.edit_text("Cancelled. Your data is unchanged.")
+        await safe_edit(callback.message, "Cancelled. Your data is unchanged.")
     await callback.answer()

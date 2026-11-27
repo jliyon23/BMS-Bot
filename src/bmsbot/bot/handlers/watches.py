@@ -7,6 +7,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bmsbot.bot import keyboards, texts
+from bmsbot.bot.ui import safe_edit
 from bmsbot.db.models import Movie, Region, User, Watch
 from bmsbot.db.repositories.watches import WatchRepository
 from bmsbot.domain.enums import ALERT_TITLES, AlertType
@@ -112,7 +113,7 @@ async def delete_watch(
     await _monitor_state(session, watch, False)
     await WatchRepository(session).delete(watch)
     if callback.message is not None:
-        await callback.message.edit_text(texts.WATCH_REMOVED)
+        await safe_edit(callback.message, texts.WATCH_REMOVED)
     await callback.answer("Removed")
 
 

@@ -4,6 +4,7 @@ import asyncio
 import logging
 import signal
 from collections import defaultdict
+from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -32,14 +33,27 @@ class AlertWorker:
         self.settings = settings
         self.sender = sender
         self._stop = asyncio.Event()
+        self._failed = 0
+        self._retried = 0
+        self._last_error: str | None = None
 
     async def run_forever(self) -> None:
         log.info("alert worker started", extra={"worker": "alert-sender"})
+        if not self.sender.configured:
+            # Refuse to run blind: without a token every alert would be dropped.
+            log.error(
+                "BMS_TELEGRAM_BOT_TOKEN is not configured; refusing to start alert worker",
+                extra={"worker": "alert-sender"},
+            )
+            raise SystemExit("BMS_TELEGRAM_BOT_TOKEN is not configured")
         while not self._stop.is_set():
             try:
+                self._failed = 0
+                self._retried = 0
                 sent = await self.process_once()
                 await self._heartbeat(sent)
-            except Exception:
+            except Exception as exc:
+                self._last_error = f"{type(exc).__name__}: {exc}"
                 log.exception("alert loop failed", extra={"worker": "alert-sender"})
                 await asyncio.sleep(3)
             try:
@@ -70,7 +84,7 @@ class AlertWorker:
         for (user_id, date_code, movie_title), batch in batches.items():
             user = users.get(user_id)
             if user is None or not user.is_active or user.is_banned:
-                await self._mark_failed([alert.id for alert in batch], "user unavailable")
+                await self._handle_failure(batch, "user unavailable", retryable=False)
                 continue
             region_name = str((batch[0].payload or {}).get("region_name") or "")
             changes: list[tuple[AlertType, dict]] = []
@@ -89,8 +103,9 @@ class AlertWorker:
             if ok:
                 await self._mark_sent([alert.id for alert in batch])
                 sent_count += len(batch)
+                self._last_error = None
             else:
-                await self._mark_failed([alert.id for alert in batch], "telegram send failed")
+                await self._handle_failure(batch, "telegram send failed", retryable=True)
 
         return sent_count
 
@@ -120,14 +135,58 @@ class AlertWorker:
             )
             await session.commit()
 
+    async def _handle_failure(
+        self, alerts: list[AlertEvent], error: str, *, retryable: bool
+    ) -> None:
+        """Retry transient failures for a short window, then give up.
+
+        BMS alerts are time-sensitive, so a message older than
+        ``alert_retry_ttl_sec`` is marked FAILED instead of being replayed late.
+        """
+        from sqlalchemy import update
+
+        now = utcnow()
+        ttl = timedelta(seconds=self.settings.alert_retry_ttl_sec)
+        max_attempts = self.settings.alert_max_attempts
+        async with self.session_factory() as session:
+            for alert in alerts:
+                attempts = alert.attempts + 1
+                expired = alert.created_at is not None and (now - alert.created_at) > ttl
+                final = not retryable or attempts >= max_attempts or expired
+                values: dict[str, object] = {
+                    "attempts": attempts,
+                    "last_error": error[:500],
+                }
+                if final:
+                    values["status"] = AlertStatus.FAILED.value
+                    self._failed += 1
+                else:
+                    backoff = min(30, 5 * attempts)
+                    values["next_attempt_at"] = now + timedelta(seconds=backoff)
+                    self._retried += 1
+                await session.execute(
+                    update(AlertEvent).where(AlertEvent.id == alert.id).values(**values)
+                )
+            await session.commit()
+        self._last_error = error
+
     async def _heartbeat(self, sent: int) -> None:
         async with self.session_factory() as session:
+            pending = await AlertRepository(session).count_pending()
             heartbeat = await session.get(WorkerHeartbeat, "alert-sender")
             if heartbeat is None:
                 heartbeat = WorkerHeartbeat(name="alert-sender", status="ok", detail={})
                 session.add(heartbeat)
-            heartbeat.status = "ok"
-            heartbeat.detail = {"sent": sent, "at": utcnow().isoformat()}
+            heartbeat.status = "degraded" if self._failed else "ok"
+            heartbeat.detail = {
+                "sent": sent,
+                "failed": self._failed,
+                "retried": self._retried,
+                "pending": pending,
+                "configured": self.sender.configured,
+                "last_error": self._last_error,
+                "at": utcnow().isoformat(),
+            }
             heartbeat.last_seen_at = utcnow()
             await session.commit()
 

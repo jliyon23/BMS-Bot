@@ -207,7 +207,18 @@ production solution at a 10-second cadence.
 - Alembic migrations in `migrations/`.
 - Alert outbox (`alert_events`) with unique dedupe keys, so retries and restarts
   cannot send the same change twice.
+- Transient Telegram failures are retried with backoff for up to
+  `BMS_ALERT_RETRY_TTL_SEC` (default 300s), then marked `failed`. The alert
+  worker refuses to start when `BMS_TELEGRAM_BOT_TOKEN` is empty, and its
+  heartbeat reports `configured`, `sent`, `failed` and `last_error`.
+- Deleting a watch keeps its alert history (`watch_id` becomes `NULL`).
 - Monitor leases prevent two workers from scraping the same target.
+
+After changing `.env`, recreate every service so all workers see the new values:
+
+```bash
+make deploy        # docker compose up -d --build --force-recreate
+```
 
 ## Tests and quality
 
@@ -297,13 +308,17 @@ No other inbound port is required. The bot uses long polling.
 
 ### Backups
 
-SQLite runs in WAL mode; use the online backup command:
+SQLite runs in WAL mode; use the online backup script (safe while running):
 
 ```bash
-mkdir -p ~/bms-backups
-sqlite3 ~/BMS-Bot/data/bmsbot.db \
-  ".backup '$HOME/bms-backups/bmsbot-$(date +%F-%H%M).db'"
-find ~/bms-backups -name 'bmsbot-*.db' -mtime +7 -delete
+~/BMS-Bot/scripts/backup.sh        # or: make backup from the repo root
+```
+
+It writes to `~/bms-backups`, verifies with `pragma quick_check`, and keeps 7
+days by default. Install it daily:
+
+```cron
+15 3 * * * /home/ubuntu/BMS-Bot/scripts/backup.sh >> /home/ubuntu/bms-backups/backup.log 2>&1
 ```
 
 Add that to cron daily. Optionally copy backups to Oracle Object Storage.

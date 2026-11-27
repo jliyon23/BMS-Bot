@@ -38,7 +38,6 @@ Choose the alerts you want. Tap a row to turn it on or off."""
 SUBSCRIBED = """✅ <b>You're watching {movie}</b>
 
 Region: {region}
-I'll check every 10 seconds and message you when something changes.
 
 Use /watches to manage this subscription."""
 

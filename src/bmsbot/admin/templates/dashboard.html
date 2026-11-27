@@ -2,10 +2,17 @@
 {% block title %}Dashboard{% endblock %}
 {% block content %}
 <h1>Dashboard</h1>
+{% if not telegram_configured %}
+<div class="error">Telegram token is missing. Alerts cannot be delivered.</div>
+{% endif %}
+{% if failed_24h %}
+<div class="error">{{ failed_24h }} alert(s) failed to send in the last 24 hours. Check the alert-sender heartbeat.</div>
+{% endif %}
 <table class="stats">
   <tr><th>Users</th><td>{{ users }}</td><th>Active watches</th><td>{{ watches }}</td></tr>
   <tr><th>Active monitors</th><td>{{ monitors }}</td><th>Due now</th><td>{{ due }}</td></tr>
   <tr><th>Pending alerts</th><td>{{ pending }}</td><th>Sent (24h)</th><td>{{ sent }}</td></tr>
+  <tr><th>Failed (24h)</th><td>{{ failed_24h }}</td><th>Last sent</th><td>{{ last_sent or "never" }}</td></tr>
   <tr><th>Proxy mode</th><td colspan="3">{{ "PREMIUM ONLY (free proxies ignored)" if premium else "FREE" }}</td></tr>
 </table>
 

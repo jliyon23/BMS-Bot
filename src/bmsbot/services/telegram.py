@@ -20,6 +20,10 @@ class TelegramSender:
         self._lock = asyncio.Lock()
         self._last_sent = 0.0
 
+    @property
+    def configured(self) -> bool:
+        return self.bot is not None
+
     async def close(self) -> None:
         if self.bot is not None:
             await self.bot.session.close()

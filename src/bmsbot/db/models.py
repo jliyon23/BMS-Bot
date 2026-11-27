@@ -211,7 +211,10 @@ class AlertEvent(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    watch_id: Mapped[int] = mapped_column(ForeignKey("watches.id", ondelete="CASCADE"))
+    # Nullable + SET NULL so deleting a watch keeps the delivery audit trail.
+    watch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("watches.id", ondelete="SET NULL"), nullable=True
+    )
     monitor_id: Mapped[int | None] = mapped_column(ForeignKey("monitors.id", ondelete="SET NULL"))
     alert_type: Mapped[str] = mapped_column(String(32))
     dedupe_key: Mapped[str] = mapped_column(String(255), unique=True)
@@ -219,6 +222,7 @@ class AlertEvent(Base):
     status: Mapped[str] = mapped_column(String(16), default=AlertStatus.PENDING.value)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     last_error: Mapped[str | None] = mapped_column(Text)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime)
 

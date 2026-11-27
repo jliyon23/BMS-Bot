@@ -10,6 +10,7 @@ from bmsbot.config import Settings
 from bmsbot.db.base import utcnow
 from bmsbot.db.models import Proxy, WorkerHeartbeat
 from bmsbot.db.repositories.proxies import ProxyRepository
+from bmsbot.db.repositories.settings import SettingsRepository
 from bmsbot.domain.enums import ProxyTier
 from bmsbot.proxies.crypto import CredentialCipher, build_proxy_url
 from bmsbot.proxies.sources import fetch_all_sources
@@ -32,12 +33,25 @@ class ProxyHunterWorker:
         self.validator = ProxyValidator(settings)
         self._stop = asyncio.Event()
 
+    async def _proxy_enabled(self) -> bool:
+        async with self.session_factory() as session:
+            return bool(await SettingsRepository(session).get("use_proxy", True))
+
     async def run_forever(self) -> None:
         log.info("proxy hunter started", extra={"worker": "proxy"})
         next_refresh = 0.0
         while not self._stop.is_set():
             now = asyncio.get_running_loop().time()
             try:
+                if not await self._proxy_enabled():
+                    # Proxy use is off: do not burn proxy-provider bandwidth on
+                    # revalidation. Admin "Recheck" still validates on demand.
+                    await self.heartbeat(paused=True)
+                    try:
+                        await asyncio.wait_for(self._stop.wait(), timeout=60)
+                    except TimeoutError:
+                        pass
+                    continue
                 if now >= next_refresh:
                     await self.refresh_candidates()
                     next_refresh = now + self.settings.proxy_refresh_sec
@@ -195,13 +209,13 @@ class ProxyHunterWorker:
                 extra={"proxy_id": proxy_id, "worker": "proxy"},
             )
 
-    async def heartbeat(self) -> None:
+    async def heartbeat(self, *, paused: bool = False) -> None:
         async with self.session_factory() as session:
             heartbeat = await session.get(WorkerHeartbeat, "proxy-hunter")
             if heartbeat is None:
                 heartbeat = WorkerHeartbeat(name="proxy-hunter", status="ok", detail={})
                 session.add(heartbeat)
             heartbeat.status = "ok"
-            heartbeat.detail = {}
+            heartbeat.detail = {"paused": True, "reason": "use_proxy=false"} if paused else {}
             heartbeat.last_seen_at = utcnow()
             await session.commit()
