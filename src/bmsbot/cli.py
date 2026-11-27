@@ -278,6 +278,15 @@ async def cmd_doctor(_args: argparse.Namespace) -> int:
     print("heartbeats   :")
     for row in heartbeats:
         detail = row[3] or {}
+        if isinstance(detail, str):
+            import json
+
+            try:
+                detail = json.loads(detail)
+            except ValueError:
+                detail = {}
+        if not isinstance(detail, dict):
+            detail = {}
         extra = ""
         if row[0] == "alert-sender":
             extra = (
